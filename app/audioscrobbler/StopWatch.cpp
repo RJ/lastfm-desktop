@@ -17,41 +17,65 @@
  *   51 Franklin Steet, Fifth Floor, Boston, MA  02110-1301, USA.          *
  ***************************************************************************/
 
-#ifndef LEGACY_TUNER_H
-#define LEGACY_TUNER_H
-
-#include "lib/lastfm/global.h"
-#include "AbstractTrackSource.h"
-#include "RadioStation.h"
+#include "StopWatch.h"
+#include <QTimer>
 
 
-class LASTFM_RADIO_DLLEXPORT LegacyTuner : public AbstractTrackSource
+StopWatch::StopWatch( ScrobblePoint timeout, uint elapsed ) : m_point( timeout )
+{    
+    m_timer = new QTimer( this );
+    m_timer->setSingleShot( true );
+    m_remaining = qMax( int(m_point)*1000 - int(elapsed), 0 );
+
+    connect( m_timer, SIGNAL(timeout()), SLOT(finished()) );
+}
+
+StopWatch::~StopWatch()
 {
-	Q_OBJECT
-	
-public:
-	/** You need to have assigned Ws::* for this to work, creating the tuner
-	  * automatically fetches the first 5 tracks for the station */
-    LegacyTuner( const RadioStation&, const QString& password_md5 );
+    if (!isTimedOut() && (m_point*1000) - elapsed() < 4000)
+        emit timeout();
+}
 
-    virtual lastfm::Track takeNextTrack();
 
-private slots:
-	void onHandshakeReturn();
-    void onAdjustReturn();
-	void onGetPlaylistReturn();
+void
+StopWatch::start() //private
+{
+    m_elapsed.restart();
+    m_timer->setInterval( m_remaining );
+    m_timer->start();
+}
 
-private:
-	/** Tries again up to 5 times
-	  * @returns true if we tried again, otherwise you should emit error */
-	bool tryAgain();
-    bool fetchFiveMoreTracks();
 
-    class QNetworkAccessManager* m_nam;
-	uint m_retry_counter;
-    RadioStation m_station;
-    QByteArray m_session;
-    QList<lastfm::Track> m_queue;
-};
+void
+StopWatch::pause()
+{
+    if (!m_timer->isActive() || !m_remaining)
+        return;
 
-#endif
+    m_timer->stop();
+    
+    // cater to potentially having more elapsed time than remaining time
+    uint const remaining = m_remaining - m_elapsed.elapsed();
+    m_remaining = (remaining <= m_remaining) ? remaining : 0;
+
+    emit paused( true );
+}
+
+
+void
+StopWatch::resume()
+{
+    if (!m_remaining || m_timer->isActive())
+        return;
+
+    start();
+    emit paused( false );
+}
+
+
+void
+StopWatch::finished()
+{
+    m_remaining = 0;
+    emit timeout();
+}

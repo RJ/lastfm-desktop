@@ -17,59 +17,31 @@
  *   51 Franklin Steet, Fifth Floor, Boston, MA  02110-1301, USA.          *
  ***************************************************************************/
 
-#include "StopWatch.h"
-#include <QTimer>
+#include "lib/unicorn/UnicornApplication.h"
+#include "lib/lastfm/ws/WsError.h"
 
 
-StopWatch::StopWatch( ScrobblePoint timeout, uint elapsed ) : m_point( timeout )
-{    
-    m_timer = new QTimer( this );
-    m_timer->setSingleShot( true );
-    m_remaining = qMax( int(m_point)*1000 - int(elapsed), 0 );
-
-    connect( m_timer, SIGNAL(timeout()), SLOT(finished()) );
-}
-
-
-void
-StopWatch::start() //private
+namespace moralistfad
 {
-    m_elapsed.restart();
-    m_timer->setInterval( m_remaining );
-    m_timer->start();
-}
+	class Application : public unicorn::Application
+	{
+	    Q_OBJECT
+   
+	public:
+	    Application( int&, char** );
 
+	signals:    
+	    /** something should show it. Currently MainWindow does */
+	    void error( const QString& message );
+	    void status( const QString& message, const QString& id );
 
-void
-StopWatch::pause()
-{
-    if (!m_timer->isActive() || !m_remaining)
-        return;
+	public slots:
+		void parseArguments( const QStringList& args );
 
-    m_timer->stop();
-    
-    // cater to potentially having more elapsed time than remaining time
-    uint const remaining = m_remaining - m_elapsed.elapsed();
-    m_remaining = (remaining <= m_remaining) ? remaining : 0;
-
-    emit paused( true );
-}
-
-
-void
-StopWatch::resume()
-{
-    if (!m_remaining || m_timer->isActive())
-        return;
-
-    start();
-    emit paused( false );
-}
-
-
-void
-StopWatch::finished()
-{
-    m_remaining = 0;
-    emit timeout();
+	private slots:    
+	    /** all webservices connect to this and emit in the case of bad errors that
+	     * need to be handled at a higher level */
+	    void onWsError( Ws::Error );
+	    void onRadioError( int, const class QVariant& );
+	};
 }
